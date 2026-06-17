@@ -122,6 +122,11 @@ impl Player {
         self.send(json!({"command": ["seek", secs, "relative"]}))
     }
 
+    /// Jump back to the start of the current track.
+    pub fn restart(&self) -> Result<()> {
+        self.send(json!({"command": ["seek", 0, "absolute"]}))
+    }
+
     // Kept for completeness: rumba drives the system volume (see `sysvol`),
     // leaving mpv at full volume, but this remains available.
     #[allow(dead_code)]
