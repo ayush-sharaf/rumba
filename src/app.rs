@@ -9,6 +9,9 @@ use ratatui::widgets::ListState;
 use serde_json::json;
 use std::collections::HashMap;
 
+/// How far into a track "previous" restarts it instead of going back a track.
+const PREV_RESTART_SECS: f64 = 3.0;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Home,
@@ -522,11 +525,16 @@ impl App {
     }
 
     fn prev_track(&mut self) {
-        if let Some(i) = self.current {
-            if i > 0 {
-                self.play_index(i - 1);
+        let Some(i) = self.current else { return };
+        // Past the grace window — or already at the first track — restart the
+        // current song instead of jumping back, matching common players.
+        if i == 0 || self.player.state().time_pos > PREV_RESTART_SECS {
+            if self.player.restart().is_ok() {
+                self.status = "Restarting track".into();
             }
+            return;
         }
+        self.play_index(i - 1);
     }
 
     /// Auto-advance when mpv reports the current track finished.
