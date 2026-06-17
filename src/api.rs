@@ -15,7 +15,7 @@ use ytmapi_rs::common::{
     AlbumID, ArtistChannelID, LikeStatus, PlaylistID, SuggestionType, Thumbnail, VideoID, YoutubeID,
 };
 use ytmapi_rs::parse::{
-    HistoryItem, LibraryPlaylist, ParseFrom, PlaylistItem, ProcessedResult, SearchResultPlaylist,
+    HistoryItem, ParseFrom, PlaylistItem, ProcessedResult, SearchResultPlaylist,
     SearchResultSong, TableListSong, WatchPlaylistTrack,
 };
 use ytmapi_rs::query::{PostMethod, PostQuery, Query};
@@ -75,6 +75,104 @@ impl ParseFrom<HomeQuery> for () {
     fn parse_from(_: ProcessedResult<HomeQuery>) -> ytmapi_rs::Result<Self> {
         Ok(())
     }
+}
+
+/// Raw query for the library playlists grid (`FEmusic_liked_playlists`).
+/// ytmapi-rs wraps this as `get_library_playlists`, but its parser uses hard
+/// `?`s on every field (track count, subtitle runs, …) and fails the *entire*
+/// list if a single tile differs — which a freshly created or empty playlist
+/// often does, blanking the page. We fetch raw JSON and parse tolerantly.
+struct LibraryPlaylistsQuery;
+
+impl<A: AuthToken> Query<A> for LibraryPlaylistsQuery {
+    type Output = ();
+    type Method = PostMethod;
+}
+
+impl PostQuery for LibraryPlaylistsQuery {
+    fn header(&self) -> serde_json::Map<String, serde_json::Value> {
+        serde_json::Map::from_iter([("browseId".to_string(), json!("FEmusic_liked_playlists"))])
+    }
+    fn params(&self) -> Vec<(&str, std::borrow::Cow<'_, str>)> {
+        vec![]
+    }
+    fn path(&self) -> &str {
+        "browse"
+    }
+}
+
+impl ParseFrom<LibraryPlaylistsQuery> for () {
+    fn parse_from(_: ProcessedResult<LibraryPlaylistsQuery>) -> ytmapi_rs::Result<Self> {
+        Ok(())
+    }
+}
+
+/// Walk a library-playlists response and collect playlist tiles. Each playlist
+/// is a `musicTwoRowItemRenderer` whose navigation browse id starts with "VL".
+/// This skips the "New playlist" tile (it navigates elsewhere) and tolerates
+/// missing subtitle/track-count fields.
+fn collect_library_playlists(
+    v: &Value,
+    out: &mut Vec<Value>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    match v {
+        Value::Object(o) => {
+            if let Some(item) = o.get("musicTwoRowItemRenderer") {
+                if let Some(pl) = parse_library_playlist_tile(item) {
+                    if let Some(id) = pl.get("playlist_id").and_then(Value::as_str) {
+                        if seen.insert(id.to_string()) {
+                            out.push(pl);
+                        }
+                    }
+                }
+            }
+            for val in o.values() {
+                collect_library_playlists(val, out, seen);
+            }
+        }
+        Value::Array(a) => {
+            for val in a {
+                collect_library_playlists(val, out, seen);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Extract a single playlist tile, or `None` if it isn't a real, openable
+/// playlist (the create-new tile, or special shelves we don't list).
+fn parse_library_playlist_tile(item: &Value) -> Option<Value> {
+    let browse_id = item
+        .pointer("/navigationEndpoint/browseEndpoint/browseId")
+        .and_then(Value::as_str)?;
+    // Library playlist browse ids are prefixed "VL"; the "New playlist" tile
+    // and other shelves are not.
+    if !browse_id.starts_with("VL") {
+        return None;
+    }
+    let title = item
+        .pointer("/title/runs/0/text")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if title.is_empty()
+        || title.eq_ignore_ascii_case("liked music")
+        || title.eq_ignore_ascii_case("episodes for later")
+    {
+        return None;
+    }
+    // Track count lives in the subtitle runs (e.g. "12 songs"); optional.
+    let count = item
+        .pointer("/subtitle/runs")
+        .and_then(Value::as_array)
+        .and_then(|runs| {
+            runs.iter()
+                .filter_map(|r| r.get("text").and_then(Value::as_str))
+                .find(|t| t.chars().any(|c| c.is_ascii_digit()))
+        })
+        .map(|t| t.to_string());
+    Some(json!({ "playlist_id": browse_id, "title": title, "count": count }))
 }
 
 /// Find the first `videoId` anywhere under a node.
@@ -366,8 +464,14 @@ async fn exec<A: LoggedIn>(yt: &YtMusic<A>, method: &str, params: &Value) -> Res
             Err(_) => Ok(json!({ "songs": [] })),
         },
         "library_playlists" => {
-            let pls = yt.get_library_playlists().await?;
-            Ok(json!({ "playlists": pls.iter().map(library_playlist_value).collect::<Vec<_>>() }))
+            let raw = yt
+                .json_query::<LibraryPlaylistsQuery>(LibraryPlaylistsQuery)
+                .await?;
+            let v = serde_json::to_value(&raw).unwrap_or(Value::Null);
+            let mut playlists = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            collect_library_playlists(&v, &mut playlists, &mut seen);
+            Ok(json!({ "playlists": playlists }))
         }
         "playlist" => {
             let id = str_param("playlist_id");
@@ -535,9 +639,6 @@ fn tablelist_song_value(s: &TableListSong) -> Value {
     )
 }
 
-fn library_playlist_value(p: &LibraryPlaylist) -> Value {
-    json!({ "playlist_id": p.playlist_id.get_raw(), "title": p.title, "count": p.tracks })
-}
 
 fn watch_track_value(t: &WatchPlaylistTrack) -> Value {
     song_value(
