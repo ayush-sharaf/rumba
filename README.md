@@ -21,6 +21,22 @@ all from the terminal. **Pure Rust, single binary** (no Python).
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Why a CLI?
+
+No browser engine means a fraction of the resources. Measured on an Apple Silicon
+Mac (June 2026):
+
+| | rumba | YouTube Music in a browser tab |
+| --- | --- | --- |
+| RAM | **~25 MB** UI (+ 65–103 MB `mpv`) | **402–517 MB** for the tab alone |
+| Audio bandwidth | **~112 MB/hr** (Opus 248 kbps, audio-only) | comparable audio + page overhead |
+| Disk | **8.7 MB** binary | full browser / 150–250 MB+ Electron app |
+
+rumba is **always audio-only** — it never fetches the video stream (which runs
+0.5–3 GB/hr), and there are no ads, images, JavaScript, or telemetry along for the
+ride. See **[docs/performance.md](docs/performance.md)** for the full methodology,
+measurements, and sources.
+
 ## How it works
 
 - **UI** — `ratatui` + `crossterm`.
@@ -79,6 +95,7 @@ Force a specific browser or re-connect later:
 ```sh
 rumba --login --browser firefox   # chrome / brave / edge / chromium / opera / arc / safari
 rumba --login                      # refresh from the auto-detected browser
+rumba --switch-account             # pick which signed-in Google account to use
 rumba --help
 ```
 
@@ -96,6 +113,7 @@ rumba --help
 | `y` | Show lyrics for the selected / now-playing track |
 | `L` / `D` | Like / dislike the selected track |
 | `s` | Sort the list (toggle title ↔ artist) |
+| `c` | Switch Google account (when multiple are signed in) |
 | `d` | Download the selected track (mp3) to `~/Music/rumba/` |
 | `Space` | Play / pause |
 | `n` / `p` | Next / previous track |
@@ -121,8 +139,8 @@ search = "/"
 
 Action names: `quit`, `next_tab`, `prev_tab`, `tab1`…`tab7`, `search`, `up`,
 `down`, `activate`, `back`, `enqueue`, `radio`, `lyrics`, `like`, `dislike`,
-`sort`, `download`, `play_pause`, `next`, `prev`, `seek_fwd`, `seek_back`,
-`vol_up`, `vol_down`. Key names: a single character (`q`, `+`), or `space`,
+`sort`, `download`, `switch_account`, `play_pause`, `next`, `prev`, `seek_fwd`,
+`seek_back`, `vol_up`, `vol_down`. Key names: a single character (`q`, `+`), or `space`,
 `tab`, `backtab`, `enter`, `esc`, `up`/`down`/`left`/`right`, and `ctrl-<key>`.
 
 ## Files & environment
