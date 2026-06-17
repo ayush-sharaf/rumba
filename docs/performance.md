@@ -16,10 +16,13 @@ June 2026) with **published figures** for things that can't be measured locally
   rumba's TUI process used **24.6 MB** *(measured)* plus a 64–103 MB `mpv`
   backend — roughly **16–21× less RAM for the UI**, and ~4–8× less for the whole
   app vs a tab plus its share of the browser.
-- **Bandwidth:** rumba streamed **107 MiB/hr (~112 MB/hr)** of Opus 248 kbps audio
-  *(measured)*. YouTube Music at the same tier runs **~115–150 MB/hr** [5][8]
-  (~3–34 % more, from page overhead), and **0.5–3 GB/hr if it serves a music video**
-  [4][6] — which rumba never fetches.
+- **Bandwidth:** **roughly a wash for the audio itself.** rumba streamed
+  **112 MB/hr** of 256 kbps Opus *(measured)*; a signed-in browser at the same tier
+  pulls the same ~112–115 MB/hr. (Our proxy test ran the *free, signed-out* web tier
+  at **128 kbps → 63 MB/hr** *(measured)* — lower only because it's lower quality.)
+  rumba's real bandwidth edge is **narrow but real:** it **never fetches video**
+  (0.5–3 GB/hr when the web serves a music video [4][6]), skips the one-time
+  page-load payload, and plays **no ads**.
 - **Disk:** an **8.7 MB** single binary *(measured)* vs a full browser / a
   150–250 MB+ Electron bundle. [3]
 
@@ -55,36 +58,57 @@ straight to the terminal and skipping GPU compositing and font rasterization. [7
 
 ## Bandwidth
 
-rumba's measured rate and the equivalent YouTube Music modes, per hour:
+**Honest headline: for the audio itself, bandwidth is roughly a wash — both stream
+the same bitrate for the same quality.** rumba's edge is real but narrow (no video,
+no page-load payload, no ads), not a smaller audio stream.
 
-| Mode | Data / hour | Basis |
-| --- | --- | --- |
-| **rumba — audio-only, Opus 248 kbps** | **107 MiB/hr (~112 MB/hr)** | *measured* (60 s = 1.79 MiB) |
-| YT Music audio — Low (48 kbps) | ~22 MB/hr | bitrate math [5] |
-| YT Music audio — Normal (128 kbps) | ~58 MB/hr (≈40–120 reported) | bitrate math [5]; real-world [8] |
-| YT Music audio — High (256 kbps) | ~115 MB/hr (≈150 reported) | bitrate math [5]; real-world [8] |
-| YT Music **music video** — 480p | **~480–660 MB/hr** | [4][6] |
-| YT Music **music video** — 720p | **~1.2–1.5 GB/hr** | [4][6] |
-| YT Music **music video** — 1080p | **~2.1–3 GB/hr** | [4][6] |
+| Mode | Quality | Data / hour | Basis |
+| --- | --- | --- | --- |
+| **rumba — audio-only** | 256 kbps Opus | **107 MiB/hr (~112 MB/hr)** | *measured* (60 s = 1.79 MiB) |
+| Web app, **signed-out / free** | 128 kbps | **63 MB/hr** | *measured* (mitmproxy, 4.8 min — see below) |
+| Web app, **signed-in / Premium** | 256 kbps | ~112–115 MB/hr | bitrate math [5] — matches rumba |
+| YT Music **music video** — 480p | — | ~480–660 MB/hr | [4][6] |
+| YT Music **music video** — 720p | — | ~1.2–1.5 GB/hr | [4][6] |
+| YT Music **music video** — 1080p | — | ~2.1–3 GB/hr | [4][6] |
 
 **Reading the table:**
 
-- **Same audio tier, ~3–34 % more on the web.** rumba pulls the top audio-only
-  stream and measured **112 MB/hr**. Published real-world figures for YouTube Music
-  at the same 256 kbps tier run **~115–150 MB/hr** [5][8] — the gap over rumba's raw
-  112 MB/hr is page/session overhead (JavaScript, cover-art images, telemetry) that
-  the per-hour measurements include and rumba doesn't carry.
-- **The big divergence is video.** rumba **never fetches video**; the web player can
-  serve a music video for tracks that have one, which is **~4–27× more data**
-  (480p–1080p = 0.5–3 GB/hr) [4][6]. One hour of 1080p music videos ≈ **27 hours**
-  of rumba audio for the same listening.
-- **Plus ads.** On a non-Premium account the web app additionally streams ad video
-  segments; rumba's direct-stream path plays none (see *A note on ads* below).
+- **Same quality → same audio bandwidth.** We measured the web app at **128 kbps =
+  63 MB/hr**; rumba at 256 kbps = 112 MB/hr. The difference is *quality*, not
+  efficiency — a signed-in browser at 256 kbps pulls the same ~112–115 MB/hr rumba
+  does. rumba is **not** a steady-state bandwidth saver for normal listening, and at
+  the top tier it can use *more* than a free-tier browser because it always fetches
+  the highest-quality audio. **We tested over the free 128 kbps tier** (signed out),
+  which is why the measured web figure looks lower.
+- **Where rumba does save — never fetching video.** The web player can serve a music
+  video for tracks that have one: **0.5–3 GB/hr** (480p–1080p) [4][6], i.e.
+  **~4–27×** the audio. One hour of 1080p music videos ≈ **27 hours** of rumba audio.
+  rumba only ever pulls audio, so this cost simply never happens.
+- **No page-load payload, no ads.** During steady playback the web app is ~97 %
+  audio (measured below), but each session still loads a multi-MB JavaScript/HTML
+  bundle up front, and a non-Premium account streams **ad segments** between tracks —
+  neither of which rumba incurs (see *A note on ads*).
 
-> Per-*tab* browser bandwidth is hard to isolate locally (the player buffers whole
-> songs ahead, and Chromium routes stream bytes through a shared network process),
-> so the web figures above are bitrate-derived and from published per-hour
-> measurements [5][8], not captured on this machine. rumba's 112 MB/hr is measured.
+### Measured via mitmproxy
+
+To get real per-category numbers, a throwaway Brave instance was routed through
+`mitmproxy` (HTTP/3 disabled so traffic couldn't bypass the proxy; the proxy CA
+SPKI-pinned via a launch flag rather than installed in the keychain) and ~4.8 min of
+**signed-out, free-tier** playback was captured:
+
+| Category | Data | Share |
+| --- | --- | --- |
+| Audio stream (`*.googlevideo.com`) | 4.64 MiB | 96.8 % |
+| Cover-art images | 0.13 MiB | 2.8 % |
+| API (JSON) | 0.02 MiB | 0.4 % |
+| JS / HTML / telemetry (in-window) | ~0 | ~0 % |
+| **Total** | **4.79 MiB** | → **63 MB/hr** |
+
+Two takeaways: steady playback is **almost entirely the audio stream** (the JS/HTML
+loads once, before playback, so it doesn't recur per hour), and the free tier
+streams **128 kbps**, which is why it measured ~63 MB/hr rather than the ~112 MB/hr
+of a 256 kbps stream. A signed-in/Premium browser session would match rumba; logging
+into Google through a MITM proxy is unreliable, so that tier is bitrate-derived [5].
 
 ## CPU & battery
 
@@ -105,7 +129,8 @@ benchmarked here; consistent with the terminal-rendering efficiency noted in [7]
 | Dimension | rumba (CLI) | YouTube Music web (tab) | YT Music desktop (Chromium/Electron) |
 | --- | --- | --- | --- |
 | UI/app RAM | **~25 MB TUI (+65–103 MB mpv)** *(meas.)* | **402–517 MB** *(meas.)* + browser baseline | 200–500 MB+ [3] |
-| Bandwidth/hr | **~112 MB audio-only** *(meas.)* | ~115–150 MB audio [5][8] · **0.5–3 GB if video** [4][6] | same as web |
+| Bandwidth/hr (audio) | **~112 MB** @ 256 kbps *(meas.)* | same ~112–115 MB @ 256 kbps (63 MB @ 128 kbps *meas.*) | same as web |
+| Bandwidth/hr (extra) | none — audio only | **0.5–3 GB if a video plays** [4][6] + page load + ads | same as web |
 | Video ever fetched | **Never** | Possible per track | Possible per track |
 | Ads / images / telemetry | None | Yes | Yes |
 | Install size | **8.7 MB** *(meas.)* | uses existing browser | 150–250 MB+ |
@@ -125,10 +150,10 @@ YouTube's Terms of Service; respect them.
    music video is served; treat ranges as representative, not guarantees.
 2. Measured figures are from one Apple Silicon Mac (Brave, June 2026). The browser
    tab RAM fluctuated 402–517 MB during the session.
-3. rumba's bandwidth is measured; the **web/app** bandwidth figures are
-   bitrate-derived and from published per-hour measurements [5][8], not captured on
-   this machine — per-tab browser traffic isn't cleanly isolable locally
-   (ahead-buffering + Chromium's shared network process).
+3. The web-app bandwidth was measured against the **free, signed-out 128 kbps tier**
+   via mitmproxy; the signed-in/Premium **256 kbps** figure is bitrate-derived (a
+   MITM-proxied Google login is unreliable). Both rumba (256 kbps) and the web tiers
+   are real audio bitrates — at equal quality they transfer equal data.
 4. Some widely-quoted "MB/hour" music figures conflate audio with video (e.g.
    "750 MB/hr for high quality"); those are inconsistent with a 256 kbps stream and
    are excluded in favour of bitrate-derived math and direct measurement.
