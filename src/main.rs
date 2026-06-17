@@ -67,12 +67,16 @@ fn main() -> Result<()> {
         .and_then(|i| args.get(i + 1))
         .cloned();
 
-    // Explicit re-login: always re-detect and verbosely report.
+    // Explicit re-login: always re-detect and verbosely report, then let the
+    // user pick which Google account to use.
     if has("--login") || args.first().map(String::as_str) == Some("login") {
         if refresh_cookies(&dir, browser.as_deref())?.is_some() {
+            select_account(&dir)?;
             return Ok(());
         }
-        return interactive_login(&dir, browser.as_deref());
+        interactive_login(&dir, browser.as_deref())?;
+        select_account(&dir)?;
+        return Ok(());
     }
 
     check_dependencies()?;
@@ -86,7 +90,92 @@ fn main() -> Result<()> {
         None => interactive_login(&dir, browser.as_deref())?,
     }
 
+    // Let the user re-pick their account from the CLI.
+    if has("--switch-account") {
+        select_account(&dir)?;
+        return Ok(());
+    }
+
+    // First run with multiple signed-in accounts: ask once which to use.
+    if !account_pref_path(&dir).exists() {
+        select_account(&dir)?;
+    }
+
     run_tui(&dir)
+}
+
+/// Enumerate signed-in Google accounts and let the user choose which one rumba
+/// should connect to, saving the choice. A no-op prompt when only one exists.
+fn select_account(dir: &Path) -> Result<()> {
+    let cookie = std::fs::read_to_string(auth::cookie_path(dir))
+        .context("could not read saved session; run `rumba --login`")?;
+    println!("\nLooking up signed-in Google accounts…");
+    let accounts = api::list_accounts(&cookie)?;
+    // Cache the list so the in-app switcher can offer it without re-querying.
+    if let Ok(json) = serde_json::to_string(&accounts) {
+        let _ = std::fs::write(accounts_path(dir), json);
+    }
+    match accounts.as_slice() {
+        [] => {
+            println!("No accounts detected; using the browser default.");
+            Ok(())
+        }
+        [only] => {
+            write_authuser(dir, only.authuser)?;
+            println!("✓ Using {}", only.label());
+            Ok(())
+        }
+        many => {
+            let current = read_authuser(dir);
+            println!("\nMultiple Google accounts are signed in — which should rumba use?\n");
+            for (i, a) in many.iter().enumerate() {
+                let marker = if a.authuser == current { " (current)" } else { "" };
+                println!("  {}. {}{marker}", i + 1, a.label());
+            }
+            print!("\nEnter number [1-{}]: ", many.len());
+            stdout().flush().ok();
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            match line
+                .trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|n| (1..=many.len()).contains(n))
+            {
+                Some(n) => {
+                    let chosen = &many[n - 1];
+                    write_authuser(dir, chosen.authuser)?;
+                    println!("✓ Connected account set to {}", chosen.label());
+                }
+                None => println!("No valid choice; keeping the current account."),
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Path of the file storing the chosen `X-Goog-AuthUser` account index.
+fn account_pref_path(dir: &Path) -> PathBuf {
+    dir.join("account.txt")
+}
+
+/// Path of the cached list of signed-in accounts (for the in-app switcher).
+fn accounts_path(dir: &Path) -> PathBuf {
+    dir.join("accounts.json")
+}
+
+/// Read the saved account index, defaulting to 0 (the browser's default
+/// Google account) when no preference has been set.
+fn read_authuser(dir: &Path) -> u32 {
+    std::fs::read_to_string(account_pref_path(dir))
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn write_authuser(dir: &Path, authuser: u32) -> Result<()> {
+    std::fs::write(account_pref_path(dir), authuser.to_string())?;
+    Ok(())
 }
 
 /// Non-interactive: detect a logged-in browser session and overwrite the cached
@@ -140,7 +229,7 @@ fn open_url(url: &str) {
 fn run_tui(dir: &Path) -> Result<()> {
     let cookie = std::fs::read_to_string(auth::cookie_path(dir))
         .context("could not read saved session; run `rumba --login`")?;
-    let api = Api::spawn(Auth::Cookie(cookie))?;
+    let api = Api::spawn(Auth::Cookie(cookie), read_authuser(dir))?;
 
     let source = std::fs::read_to_string(dir.join("source.txt"))
         .unwrap_or_else(|_| "browser".into())
@@ -164,7 +253,7 @@ fn run_tui(dir: &Path) -> Result<()> {
     enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
 
-    let mut app = App::new(api, player, source, keymap);
+    let mut app = App::new(api, player, source, keymap, dir.to_path_buf(), read_authuser(dir));
 
     // Ask the terminal to report modifier+key combos (e.g. Cmd+Backspace) via
     // the Kitty keyboard protocol. No-op on terminals that don't support it.
@@ -230,6 +319,7 @@ USAGE:
     rumba --login              Re-connect using your browser session
     rumba --login --browser firefox
                                Force a specific browser (chrome/brave/edge/safari…)
+    rumba --switch-account     Pick which signed-in Google account to use
     rumba --help               Show this help
 
 On first launch rumba reads your logged-in YouTube Music session from your

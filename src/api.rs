@@ -19,7 +19,121 @@ use ytmapi_rs::parse::{
     SearchResultSong, TableListSong, WatchPlaylistTrack,
 };
 use ytmapi_rs::query::{PostMethod, PostQuery, Query};
+use ytmapi_rs::auth::BrowserToken;
+use ytmapi_rs::builder::YtMusicBuilder;
 use ytmapi_rs::YtMusic;
+
+/// Build a YtMusic client pinned to a specific Google account.
+///
+/// Google's `youtube.com` cookies are shared across every signed-in account;
+/// which account a request resolves to is chosen by the `X-Goog-AuthUser`
+/// header (an index into the signed-in accounts, default 0). ytmapi-rs never
+/// sets it, so it always hits account 0. We inject it via a custom reqwest
+/// client whose default headers carry the chosen index.
+async fn build_yt(cookie: String, authuser: u32) -> Result<YtMusic<BrowserToken>> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("x-goog-authuser"),
+        HeaderValue::from_str(&authuser.to_string())?,
+    );
+    let rq = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()?;
+    let client = ytmapi_rs::client::Client::new_from_reqwest_client(rq);
+    let yt = YtMusicBuilder::new()
+        .with_client(client)
+        .with_browser_token_cookie(cookie)
+        .build()
+        .await?;
+    Ok(yt)
+}
+
+/// A signed-in Google account discovered in the browser session.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AccountInfo {
+    pub authuser: u32,
+    pub name: String,
+    /// Email is only exposed by YouTube for the default account; empty otherwise.
+    pub email: String,
+    /// Channel handle (e.g. "@name"); present only for accounts with a channel.
+    pub handle: String,
+}
+
+impl AccountInfo {
+    /// A short label distinguishing this account in a picker.
+    pub fn label(&self) -> String {
+        let detail = if !self.email.is_empty() {
+            self.email.clone()
+        } else if !self.handle.is_empty() {
+            self.handle.clone()
+        } else {
+            format!("account {}", self.authuser)
+        };
+        format!("{} ({})", self.name, detail)
+    }
+}
+
+/// Probe `X-Goog-AuthUser` indices and return every account the session can
+/// reach. Stops at the first index that doesn't resolve to a real account.
+pub fn list_accounts(cookie: &str) -> Result<Vec<AccountInfo>> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async move {
+        let mut out: Vec<AccountInfo> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for idx in 0..10u32 {
+            let yt = match build_yt(cookie.to_string(), idx).await {
+                Ok(yt) => yt,
+                Err(_) => break,
+            };
+            match account_info(&yt).await {
+                Ok(Some((name, email, handle))) => {
+                    // Out-of-range indices can echo the default account rather
+                    // than failing; stop once an identity repeats.
+                    let key = format!("{name}|{email}|{handle}");
+                    if !seen.insert(key) {
+                        break;
+                    }
+                    out.push(AccountInfo {
+                        authuser: idx,
+                        name,
+                        email,
+                        handle,
+                    });
+                }
+                // No account at this index — we've passed the last one.
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+        Ok(out)
+    })
+}
+
+/// Fetch the active account's name + email for a given client, or `None` if
+/// this index has no signed-in account.
+async fn account_info<A: LoggedIn>(
+    yt: &YtMusic<A>,
+) -> Result<Option<(String, String, String)>> {
+    let raw = yt.json_query::<AccountMenuQuery>(AccountMenuQuery).await?;
+    let v = serde_json::to_value(&raw).unwrap_or(Value::Null);
+    let base = "/actions/0/openPopupAction/popup/multiPageMenuRenderer/header/activeAccountHeaderRenderer";
+    let run = |key: &str| {
+        v.pointer(&format!("{base}/{key}/runs/0/text"))
+            .and_then(Value::as_str)
+            .map(String::from)
+    };
+    match run("accountName") {
+        Some(name) if !name.is_empty() => Ok(Some((
+            name,
+            run("email").unwrap_or_default(),
+            run("channelHandle").unwrap_or_default(),
+        ))),
+        _ => Ok(None),
+    }
+}
 
 /// Minimal custom query for YouTube's `account/account_menu` endpoint, which
 /// `ytmapi-rs` doesn't wrap. We only need the raw JSON (via `json_query`), so
@@ -248,7 +362,7 @@ pub struct Api {
 }
 
 impl Api {
-    pub fn spawn(auth: Auth) -> Result<Self> {
+    pub fn spawn(auth: Auth, authuser: u32) -> Result<Self> {
         let (tx, job_rx) = tokio::sync::mpsc::unbounded_channel::<Job>();
         let (resp_tx, resp_rx) = mpsc::channel::<RawResponse>();
 
@@ -262,7 +376,7 @@ impl Api {
             };
             rt.block_on(async move {
                 match auth {
-                    Auth::Cookie(cookie) => match YtMusic::from_cookie(cookie).await {
+                    Auth::Cookie(cookie) => match build_yt(cookie, authuser).await {
                         Ok(yt) => serve(yt, job_rx, resp_tx).await,
                         Err(e) => fail_all(job_rx, resp_tx, format!("auth failed: {e}")).await,
                     },

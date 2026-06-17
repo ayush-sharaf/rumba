@@ -56,6 +56,11 @@ fn render_tabs(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_main(f: &mut Frame, app: &mut App, area: Rect) {
+    // Account picker overlay takes precedence over everything.
+    if app.account_picker.is_some() {
+        render_account_picker(f, app, area);
+        return;
+    }
     // Lyrics overlay takes precedence over everything.
     if app.lyrics.is_some() {
         render_lyrics(f, app, area);
@@ -102,11 +107,54 @@ fn render_account(f: &mut Frame, app: &App, area: Rect) {
         stat_line("Playlists", &app.playlists.len().to_string()),
         stat_line("Liked songs", &app.liked.len().to_string()),
         stat_line("Queue", &app.queue.len().to_string()),
+        Line::from(""),
+        Line::from(Span::styled(
+            if app.accounts.len() > 1 {
+                format!("Press c to switch account ({} signed in)", app.accounts.len())
+            } else {
+                "Press c to switch account".to_string()
+            },
+            Style::default().fg(Color::DarkGray),
+        )),
     ];
     let p = Paragraph::new(lines).block(
         Block::default()
             .borders(Borders::ALL)
             .title(" Account ")
+            .padding(ratatui::widgets::Padding::new(2, 2, 1, 1)),
+    );
+    f.render_widget(p, area);
+}
+
+/// Overlay listing signed-in accounts to switch between.
+fn render_account_picker(f: &mut Frame, app: &App, area: Rect) {
+    let sel = app.account_picker.unwrap_or(0);
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            "Switch account",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    for (i, a) in app.accounts.iter().enumerate() {
+        let selected = i == sel;
+        let current = a.authuser == app.authuser;
+        let prefix = if selected { "▶ " } else { "  " };
+        let suffix = if current { "  ● current" } else { "" };
+        let style = if selected {
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("{prefix}{}", a.label()), style),
+            Span::styled(suffix.to_string(), Style::default().fg(Color::Green)),
+        ]));
+    }
+    let p = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Switch account (j/k move · Enter select · Esc cancel) ")
             .padding(ratatui::widgets::Padding::new(2, 2, 1, 1)),
     );
     f.render_widget(p, area);
@@ -425,7 +473,7 @@ fn render_now_playing(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_status(f: &mut Frame, app: &App, area: Rect) {
-    let help = "space pause · n/p · ←/→ seek · +/- vol · / search · a queue · r radio · y lyrics · L/D rate · s sort · q quit";
+    let help = "space pause · n/p · ←/→ seek · +/- vol · / search · a queue · r radio · y lyrics · L/D rate · s sort · c account · q quit";
     let line = Line::from(vec![
         Span::styled(format!(" {} ", app.status), Style::default().fg(Color::Yellow)),
         Span::styled(format!("│ {help}"), Style::default().fg(Color::DarkGray)),

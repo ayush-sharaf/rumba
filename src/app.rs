@@ -153,14 +153,34 @@ pub struct App {
     pub account_email: Option<String>,
     pub account_handle: Option<String>,
 
+    // Multi-account switching.
+    config_dir: std::path::PathBuf,
+    /// Signed-in accounts available to switch between (cached at login).
+    pub accounts: Vec<crate::api::AccountInfo>,
+    /// The currently connected `X-Goog-AuthUser` index.
+    pub authuser: u32,
+    /// When `Some`, the account-picker overlay is open at this selection.
+    pub account_picker: Option<usize>,
+
     pending: HashMap<u64, Pending>,
     last_eof: u64,
 }
 
 impl App {
-    pub fn new(api: Api, player: Player, account_source: String, keymap: Keymap) -> Self {
+    pub fn new(
+        api: Api,
+        player: Player,
+        account_source: String,
+        keymap: Keymap,
+        config_dir: std::path::PathBuf,
+        authuser: u32,
+    ) -> Self {
         let volsync = crate::sysvol::Watcher::spawn();
         let volume = volsync.get().unwrap_or(100.0);
+        let accounts = std::fs::read_to_string(config_dir.join("accounts.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
         let mut app = Self {
             api,
             player,
@@ -197,6 +217,10 @@ impl App {
             account_name: None,
             account_email: None,
             account_handle: None,
+            config_dir,
+            accounts,
+            authuser,
+            account_picker: None,
             pending: HashMap::new(),
             last_eof: 0,
         };
@@ -535,6 +559,55 @@ impl App {
             return;
         }
         self.play_index(i - 1);
+    }
+
+    /// Open the account-switcher overlay, selecting the current account.
+    fn open_account_picker(&mut self) {
+        if self.accounts.len() < 2 {
+            self.status = "Only one account is signed in (run `rumba --login` to refresh)".into();
+            return;
+        }
+        let sel = self
+            .accounts
+            .iter()
+            .position(|a| a.authuser == self.authuser)
+            .unwrap_or(0);
+        self.account_picker = Some(sel);
+    }
+
+    /// Reconnect the API to a different Google account, persist the choice, and
+    /// reload every tab's data from the new account.
+    fn switch_account(&mut self, authuser: u32) -> Result<()> {
+        let cookie = std::fs::read_to_string(crate::auth::cookie_path(&self.config_dir))
+            .map_err(|e| anyhow::anyhow!("could not read session: {e}"))?;
+        let api = Api::spawn(crate::api::Auth::Cookie(cookie), authuser)?;
+        self.api = api;
+        self.authuser = authuser;
+        let _ = std::fs::write(self.config_dir.join("account.txt"), authuser.to_string());
+
+        // Stop playback and drop everything tied to the old account.
+        let _ = self.player.stop();
+        self.pending.clear();
+        self.queue.clear();
+        self.current = None;
+        self.browse.clear();
+        self.open_playlist = None;
+        self.library.clear();
+        self.liked.clear();
+        self.home.clear();
+        self.playlists.clear();
+        self.autoplay_seed = None;
+        self.account_name = None;
+        self.account_email = None;
+        self.account_handle = None;
+
+        self.refresh_home();
+        self.refresh_library();
+        self.refresh_liked();
+        self.refresh_playlists();
+        self.refresh_account();
+        self.status = "Switched account — reloading…".into();
+        Ok(())
     }
 
     /// Auto-advance when mpv reports the current track finished.
@@ -978,6 +1051,33 @@ impl App {
             return Ok(());
         }
 
+        // Account picker overlay: move / select / cancel.
+        if let Some(sel) = self.account_picker {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('c') => self.account_picker = None,
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if !self.accounts.is_empty() {
+                        self.account_picker = Some((sel + 1).min(self.accounts.len() - 1));
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.account_picker = Some(sel.saturating_sub(1));
+                }
+                KeyCode::Enter => {
+                    if let Some(acct) = self.accounts.get(sel) {
+                        let authuser = acct.authuser;
+                        self.account_picker = None;
+                        if authuser != self.authuser {
+                            self.switch_account(authuser)?;
+                        }
+                    }
+                }
+                KeyCode::Char('q') => self.should_quit = true,
+                _ => {}
+            }
+            return Ok(());
+        }
+
         // Normal mode: dispatch through the (configurable) keymap.
         if let Some(action) = self.keymap.action(&key) {
             self.do_action(action)?;
@@ -1052,6 +1152,7 @@ impl App {
             Action::Dislike => self.rate_current("dislike"),
             Action::Sort => self.sort_active(),
             Action::Download => self.download_current(),
+            Action::SwitchAccount => self.open_account_picker(),
             Action::PlayPause => self.player.toggle_pause()?,
             Action::Next => self.next_track(),
             Action::Prev => self.prev_track(),

@@ -16,7 +16,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 dirs = "5"
-ytmapi-rs = "0.3"
+ytmapi-rs = { version = "0.3", features = ["reqwest"] }
+reqwest = { version = "0.13", default-features = false, features = ["default-tls", "json", "http2", "gzip"] }
 rookie = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 toml = "0.8"
