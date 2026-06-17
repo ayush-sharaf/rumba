@@ -29,7 +29,7 @@ Mac (June 2026):
 | | rumba | YouTube Music in a browser tab |
 | --- | --- | --- |
 | RAM | **~25 MB** UI (+ 65–103 MB `mpv`) | **402–517 MB** for the tab alone |
-| Audio bandwidth | **~112 MB/hr** (Opus 248 kbps, audio-only) | comparable audio + page overhead |
+| Bandwidth | **~112 MB/hr** (Opus 248 kbps, audio-only) | ~115–150 MB/hr audio · **0.5–3 GB/hr with a music video** |
 | Disk | **8.7 MB** binary | full browser / 150–250 MB+ Electron app |
 
 rumba is **always audio-only** — it never fetches the video stream (which runs
