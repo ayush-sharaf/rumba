@@ -1,0 +1,26 @@
+[package]
+name = "rumba"
+version = "0.1.0"
+edition = "2021"
+description = "A terminal UI music player for YouTube Music"
+license = "MIT"
+
+[[bin]]
+name = "rumba"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.28"
+crossterm = "0.28"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+dirs = "5"
+ytmapi-rs = "0.3"
+rookie = "0.5"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+toml = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
