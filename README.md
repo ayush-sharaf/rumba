@@ -151,6 +151,8 @@ Everything lives in `~/.config/rumba/`:
 | --- | --- |
 | `cookies.txt` | cached browser session cookie |
 | `source.txt` | which browser the session came from |
+| `account.txt` | chosen Google account index (`X-Goog-AuthUser`) when several are signed in |
+| `accounts.json` | cached list of signed-in accounts (for the in-app `c` switcher) |
 | `config.toml` | optional key bindings (see above) |
 | `rumba.log` | event / error log |
 
@@ -163,11 +165,17 @@ Everything lives in `~/.config/rumba/`:
 - YouTube Music has no official public API; rumba relies on `ytmapi-rs` + `yt-dlp`,
   which can break when YouTube changes things. Keep yt-dlp current
   (`brew upgrade yt-dlp`) if playback ever fails.
+- **Multiple Google accounts:** browsers share one set of YouTube cookies across
+  every signed-in account, so by default rumba connects to your *default* account —
+  which may not be the one your music lives on (a work account with no YouTube
+  channel, say, shows none of your playlists). rumba prompts you to pick at login;
+  switch anytime with **`c`** in-app or `rumba --switch-account`.
 - The **Home** tab shows your personalized recommendations (the music.youtube.com
-  home feed). **Library / Liked depend on an active account** — for Google accounts
-  with little or no YouTube Music activity, YouTube serves a "single-column"
-  layout these endpoints can't parse, so they show as empty. Home, search,
-  artist/album browsing, playlists, lyrics, and playback work regardless.
+  home feed). **Library / Liked depend on an active account** — if they show empty,
+  first check you're on the right account (above). For accounts with little or no
+  YouTube Music activity, YouTube also serves a "single-column" layout these
+  endpoints can't parse. Home, search, artist/album browsing, playlists, lyrics,
+  and playback work regardless.
 - **Subscription/Premium status** isn't exposed by the internal API, so the
   Account tab can't show it.
 - **OS media keys** aren't supported on macOS (a non-bundled CLI can't capture
