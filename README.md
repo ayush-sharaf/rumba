@@ -4,6 +4,8 @@ A terminal-UI music player for **YouTube Music**, built with [ratatui](https://r
 Search, browse artists/albums/playlists, play your library, see lyrics, and more —
 all from the terminal. **Pure Rust, single binary** (no Python).
 
+### 🌐 [ayush-sharaf.github.io/rumba](https://ayush-sharaf.github.io/rumba) &nbsp;·&nbsp; [install](#install) &nbsp;·&nbsp; [performance](docs/performance.md)
+
 ```
 ┌ rumba ───────────────────────────────────────────────────────────────────────┐
 │ 1 Home  2 Search  3 Library  4 Liked  5 Playlists  6 Queue  7 Account           │
