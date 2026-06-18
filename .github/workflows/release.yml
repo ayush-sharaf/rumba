@@ -1,0 +1,60 @@
+name: release
+
+# Build native binaries for macOS + Linux on every version tag and attach
+# them (with sha256 sums) to the GitHub Release. The Homebrew formula and the
+# curl installer both pull these assets.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install Rust
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          bin="target/${{ matrix.target }}/release/rumba"
+          tar -C "$(dirname "$bin")" -czf "rumba-${{ matrix.target }}.tar.gz" rumba
+          shasum -a 256 "rumba-${{ matrix.target }}.tar.gz" > "rumba-${{ matrix.target }}.tar.gz.sha256"
+          cat "rumba-${{ matrix.target }}.tar.gz.sha256"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            rumba-${{ matrix.target }}.tar.gz
+            rumba-${{ matrix.target }}.tar.gz.sha256
+          fail_on_unmatched_files: true
+          generate_release_notes: true

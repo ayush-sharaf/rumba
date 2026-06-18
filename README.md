@@ -55,18 +55,34 @@ measurements, and sources.
 - **Volume** — mirrors the system output volume (macOS, via `osascript`), so it
   stays in sync even when you change it outside rumba.
 
-## Requirements
+## Install
 
-- macOS or Linux, a Rust toolchain (`cargo`)
-- `mpv`, `yt-dlp`, and `ffmpeg` on your `PATH`
+**Homebrew** (macOS & Linux — pulls in `mpv`, `yt-dlp`, `ffmpeg` automatically):
 
 ```sh
-brew install rustup-init yt-dlp mpv ffmpeg && rustup default stable
+brew install ayush-sharaf/tap/rumba
 ```
 
-No Python and no `pip` packages are needed.
+**curl** (prebuilt binary; install the runtime deps yourself):
 
-## Build & install
+```sh
+curl -fsSL https://raw.githubusercontent.com/ayush-sharaf/rumba/master/install.sh | bash
+```
+
+**Cargo** (from source):
+
+```sh
+cargo install rumba
+```
+
+Website & docs: **https://ayush-sharaf.github.io/rumba**
+
+### Runtime requirements
+
+rumba needs `mpv`, `yt-dlp`, and `ffmpeg` on your `PATH` (Homebrew installs them for
+you; otherwise `brew install mpv yt-dlp ffmpeg`). No Python or `pip` packages needed.
+
+### Build from source
 
 ```sh
 cargo build --release
