@@ -57,32 +57,22 @@ measurements, and sources.
 
 ## Install
 
-**Homebrew** (macOS & Linux — pulls in `mpv`, `yt-dlp`, `ffmpeg` automatically):
-
-```sh
-brew install ayush-sharaf/tap/rumba
-```
-
-**curl** (prebuilt binary; install the runtime deps yourself):
+One step, macOS & Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ayush-sharaf/rumba/master/install.sh | bash
 ```
 
-**Cargo** (from source):
-
-```sh
-cargo install rumba
-```
+The installer downloads the right prebuilt binary for your machine, verifies its
+checksum, installs it to `~/.local/bin`, and installs the runtime tools `mpv`,
+`yt-dlp`, and `ffmpeg` for you (Homebrew on macOS; apt/dnf/pacman/zypper on Linux).
+Then just run `rumba`. Env knobs: `RUMBA_INSTALL_DIR`, `RUMBA_VERSION`, `RUMBA_NO_DEPS=1`.
 
 Website & docs: **https://ayush-sharaf.github.io/rumba**
 
-### Runtime requirements
-
-rumba needs `mpv`, `yt-dlp`, and `ffmpeg` on your `PATH` (Homebrew installs them for
-you; otherwise `brew install mpv yt-dlp ffmpeg`). No Python or `pip` packages needed.
-
 ### Build from source
+
+Needs a Rust toolchain plus `mpv`, `yt-dlp`, `ffmpeg` on your `PATH`:
 
 ```sh
 cargo build --release

@@ -150,28 +150,18 @@
     <h2>install</h2>
 
     <div class="cmd">
-      <span class="label">Homebrew — macOS &amp; Linux (installs mpv/yt-dlp/ffmpeg too)</span>
-      <span class="p">$ </span><code id="c-brew">brew install ayush-sharaf/tap/rumba</code>
-      <button class="copy" data-c="c-brew">copy</button>
-    </div>
-
-    <div class="cmd">
-      <span class="label">curl — prebuilt binary</span>
+      <span class="label">macOS &amp; Linux — one step</span>
       <span class="p">$ </span><code id="c-curl">curl -fsSL https://raw.githubusercontent.com/ayush-sharaf/rumba/master/install.sh | bash</code>
       <button class="copy" data-c="c-curl">copy</button>
     </div>
 
-    <div class="cmd">
-      <span class="label">Cargo — from source</span>
-      <span class="p">$ </span><code id="c-cargo">cargo install rumba</code>
-      <button class="copy" data-c="c-cargo">copy</button>
-    </div>
-
-    <p class="note">rumba needs <span class="accent">mpv</span>, <span class="accent">yt-dlp</span>,
-       and <span class="accent">ffmpeg</span> at runtime. Homebrew pulls them in automatically;
-       for curl/cargo install them yourself
-       (<code>brew install mpv yt-dlp ffmpeg</code>). Then just run <code>rumba</code> —
-       it reads your logged-in YouTube&nbsp;Music session from your browser.</p>
+    <p class="note">That's it. The installer grabs the right prebuilt binary for your
+       machine, verifies its checksum, and installs <span class="accent">mpv</span>,
+       <span class="accent">yt-dlp</span>, and <span class="accent">ffmpeg</span> for you
+       (via Homebrew on macOS, or apt/dnf/pacman on Linux). Then just run
+       <code>rumba</code> — it reads your logged-in YouTube&nbsp;Music session from your
+       browser. <span class="dim">(Building from source? See the
+       <a href="https://github.com/ayush-sharaf/rumba#install">README</a>.)</span></p>
   </section>
 
   <section id="features">
