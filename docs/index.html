@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>rumba — YouTube Music in your terminal</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="apple-touch-icon" href="favicon.svg" />
 <meta name="description" content="rumba is a fast, native terminal-UI player for YouTube Music. Pure Rust, single binary, ~25 MB RAM. brew install ayush-sharaf/tap/rumba" />
 <meta property="og:title" content="rumba — YouTube Music in your terminal" />
 <meta property="og:description" content="A native terminal-UI music player for YouTube Music. Pure Rust, single binary, a fraction of a browser's RAM." />
@@ -34,7 +36,8 @@
   /* top bar */
   header{display:flex; align-items:center; justify-content:space-between;
     padding:22px 0; border-bottom:1px solid var(--border)}
-  .logo{font-weight:700; font-size:18px; letter-spacing:.5px}
+  .logo{font-weight:700; font-size:18px; letter-spacing:.5px; display:flex; align-items:center}
+  .logo .mark{margin-right:7px}
   .logo .blink{color:var(--accent); animation:blink 1.1s steps(1) infinite}
   @keyframes blink{50%{opacity:0}}
   nav a{margin-left:18px; color:var(--dim); font-size:14px}
@@ -110,7 +113,7 @@
 <div class="wrap">
 
   <header>
-    <div class="logo">rumba<span class="blink">▌</span></div>
+    <div class="logo"><svg class="mark" viewBox="0 0 64 64" width="17" height="17" aria-hidden="true"><path d="M25 17 L48 32 L25 47 Z" fill="#ff4646"/></svg>rumba<span class="blink">▌</span></div>
     <nav>
       <a href="#install">install</a>
       <a href="#features">features</a>
@@ -140,7 +143,7 @@
 <span class="b">└──────────────────────────────────────────────────────────────────┘</span>
 <span class="b">┌ Now Playing ─────────────────────────────────────────────────────┐</span>
 <span class="b">│</span> <span class="play">▶</span>  Get Lucky — Daft Punk                          <span class="ic">🔊 80%</span>      <span class="b">│</span>
-<span class="b">│</span> <span class="play">███████████████</span>░░░░░░░░░░░░░░░░░░░░░░  2:14 / 6:09           <span class="b">│</span>
+<span class="b">│</span> <span id="bar" class="play"></span><span id="bardim" class="dim"></span>  <span id="time">0:00</span> / 6:09           <span class="b">│</span>
 <span class="b">└──────────────────────────────────────────────────────────────────┘</span>
 <span class="dim">space pause · n/p · / search · y lyrics · c account · q quit</span> <span class="cursor"></span></pre>
     </div>
@@ -198,6 +201,7 @@
 </div>
 
 <script>
+  // copy-to-clipboard buttons
   document.querySelectorAll('.copy').forEach(function(btn){
     btn.addEventListener('click', function(){
       var text = document.getElementById(btn.dataset.c).textContent;
@@ -207,6 +211,39 @@
       });
     });
   });
+
+  // animated now-playing progress bar — fills 0:00 → 6:09, then loops
+  (function(){
+    var bar = document.getElementById('bar'),
+        dim = document.getElementById('bardim'),
+        timeEl = document.getElementById('time');
+    if(!bar) return;
+    var CELLS = 37, TOTAL = 369; // 6:09 in seconds
+    var t = 0;
+    function fmt(s){ var m=Math.floor(s/60); var ss=Math.floor(s%60); return m+':'+(ss<10?'0':'')+ss; }
+    function tick(){
+      var frac = t/TOTAL, filled = Math.round(frac*CELLS);
+      bar.textContent = '█'.repeat(filled);
+      dim.textContent = '░'.repeat(CELLS-filled);
+      timeEl.textContent = fmt(t);
+      t += 1.2;                 // ~5x speed so a loop is a few seconds
+      if(t > TOTAL) t = 0;
+    }
+    tick();
+    setInterval(tick, 90);
+  })();
+
+  // animate the terminal title bar like a typed command
+  (function(){
+    var el = document.querySelector('.term .title');
+    if(!el) return;
+    var full = '~ $ rumba', i = 0;
+    el.textContent = '';
+    var iv = setInterval(function(){
+      el.textContent = full.slice(0, ++i) + (i < full.length ? '▌' : '');
+      if(i >= full.length){ clearInterval(iv); el.textContent = full; }
+    }, 80);
+  })();
 </script>
 </body>
 </html>
