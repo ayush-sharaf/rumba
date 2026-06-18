@@ -30,8 +30,11 @@ fn read_browser(browser: &str, domains: Option<Vec<String>>) -> Result<Vec<Cooki
         "chromium" => rookie::chromium(domains),
         "opera" => rookie::opera(domains),
         "arc" => rookie::arc(domains),
+        // Safari cookie access is macOS-only in `rookie`; on other platforms
+        // this falls through to the catch-all below.
+        #[cfg(target_os = "macos")]
         "safari" => rookie::safari(domains),
-        other => return Err(anyhow!("unknown browser: {other}")),
+        other => return Err(anyhow!("unsupported browser on this platform: {other}")),
     };
     res.map_err(|e| anyhow!("{e:?}"))
 }
